@@ -180,26 +180,44 @@ class OCREngine(BaseEngine):
                 image = ImageProcessor.resize_image(image, (target_width, target_height))
                 image = ImageProcessor.convert_to_grayscale(image)
             else:
-                # 自定义模型的预处理
+                # 自定义模型的预处理（对齐训练侧：resize + ToTensor + Normalize）
                 if self.resize[0] == -1:
                     if self.word:
-                        image = ImageProcessor.resize_image(image, (self.resize[1], self.resize[1]))
+                        image = ImageProcessor.resize_image(image, (self.resize[1], self.resize[1]),
+                                                            resample=Image.BICUBIC)
                     else:
                         target_height = self.resize[1]
                         target_width = int(image.size[0] * (target_height / image.size[1]))
-                        image = ImageProcessor.resize_image(image, (target_width, target_height))
+                        image = ImageProcessor.resize_image(image, (target_width, target_height),
+                                                            resample=Image.BICUBIC)
                 else:
-                    image = ImageProcessor.resize_image(image, (self.resize[0], self.resize[1]))
+                    image = ImageProcessor.resize_image(image, (self.resize[0], self.resize[1]),
+                                                        resample=Image.BICUBIC)
                 
                 # 根据通道数转换
                 if self.channel == 1:
                     image = ImageProcessor.convert_to_grayscale(image)
+                else:
+                    image = image.convert("RGB")
             
             # 转换为numpy数组并标准化
             img_array = np.array(image).astype(np.float32)
             
             # 标准化到[0,1]
             img_array = img_array / 255.0
+            
+            # 自定义模型对齐训练侧Normalize
+            if self.use_import_onnx:
+                if self.channel == 1:
+                    mean = np.array([0.456], dtype=np.float32)
+                    std = np.array([0.224], dtype=np.float32)
+                else:
+                    mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+                    std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+                if img_array.ndim == 2:
+                    img_array = (img_array - mean[0]) / std[0]
+                else:
+                    img_array = (img_array - mean) / std
             
             # 调整维度
             if len(img_array.shape) == 2:
